@@ -197,15 +197,22 @@ namespace Emulador
         private void BloqueInstrucciones(bool ejecuta)
         {
             match("{");
-            if (Contenido != "}")
+
+            while (Contenido != "}")
             {
-                ListaInstrucciones(ejecuta);
+                //Console.WriteLine($"→ [BloqueInstrucciones] Contenido != , Contenido = '{Contenido}'");
+                Instruccion(ejecuta);
             }
-            else
-            {
-                match("}");
-            }
+
+            //Console.WriteLine($"→ [BloqueInstrucciones] Antes de match(signo), Contenido = '{Contenido}'");
+            match("}"); // Consume la llave de cierre
+
+            // Avanza al token siguiente después de cerrar el bloque.
+            //nextToken();
         }
+
+
+
         //!SECTION
         //SECTION - ListaInstrucciones
         //ListaInstrucciones -> Instruccion ListaInstrucciones?
@@ -224,24 +231,33 @@ namespace Emulador
         //!SECTION
         //SECTION - Instruccion
         //Instruccion -> console | If | While | do | For | Variables | Asignación
-        private void Instruccion(bool execute)
+        private void Instruccion(bool ejecuta)
         {
+            if (Contenido == "")
+            {
+                // Evita ejecutar instrucciones vacías (token perdido o mal manejo de seek)
+                return;
+            }
+
             switch (Contenido)
             {
                 case "Console":
-                    console(execute);
+                    console(ejecuta);
+                    //match(";");
                     break;
                 case "if":
-                    If(execute);
+                    If(ejecuta);
                     break;
                 case "while":
-                    While(execute);
+                    While(ejecuta);
                     break;
                 case "do":
-                    Do(execute);
+                    int posTMP = Math.Max(0, characterCounter - Contenido.Length);
+                    int lineaTMP = linea;
+                    Do(ejecuta, posTMP, lineaTMP);
                     break;
                 case "for":
-                    For(execute);
+                    For(ejecuta);
                     break;
                 default:
                     if (Clasificacion == Tipos.TipoDato)
@@ -250,12 +266,13 @@ namespace Emulador
                     }
                     else
                     {
-                        Asignacion(execute);
-                        match(";");
+                        Asignacion(ejecuta);
+                        match(";"); // ← ESTA LÍNEA DEBE ESTAR
                     }
                     break;
             }
         }
+
         //!SECTION
         //Asignacion -> Identificador = Expresion; (DONE)
         /*
@@ -270,6 +287,8 @@ namespace Emulador
         //SECTION - Asignacion
         private void Asignacion(bool execute)
         {
+            //Console.WriteLine($"→ [Asignacion] Token actual: '{Contenido}'");
+
             huboCasteo = false;
             tipoCasteo = Variable.TipoDato.Char;
             maximoTipo = Variable.TipoDato.Char;
@@ -480,55 +499,26 @@ namespace Emulador
         private bool Condicion(bool isDo = false)
         {
             maximoTipo = Variable.TipoDato.Char;
-            Expresion();
-            float valor1 = s.Pop();
+            float valor1 = ExpresionValor();  // Evalúa la primera expresión
 
             string operador = Contenido;
-            match(Tipos.OperadorRelacional);
+            match(Tipos.OperadorRelacional);  // Consume el operador relacional
 
             maximoTipo = Variable.TipoDato.Char;
+            float valor2 = ExpresionValor();  // Evalúa la segunda expresión
 
-            Expresion();
-            float valor2 = s.Pop();
-
-            if (!isDo)
+            switch (operador)
             {
-                switch (operador)
-                {
-                    case ">":
-                        return valor1 > valor2;
-                    case ">=":
-                        return valor1 >= valor2;
-                    case "<":
-                        return valor1 < valor2;
-                    case "<=":
-                        return valor1 <= valor2;
-                    case "==":
-                        return valor1 == valor2;
-                    default:
-                        return valor1 != valor2;
-                }
+                case ">": return valor1 > valor2;
+                case ">=": return valor1 >= valor2;
+                case "<": return valor1 < valor2;
+                case "<=": return valor1 <= valor2;
+                case "==": return valor1 == valor2;
+                default: return valor1 != valor2;
             }
-            else
-            {
-                switch (operador)
-                {
-                    case ">":
-                        return valor1 > valor2;
-                    case ">=":
-                        return valor1 >= valor2;
-                    case "<":
-                        return valor1 < valor2;
-                    case "<=":
-                        return valor1 <= valor2;
-                    case "==":
-                        return valor1 == valor2;
-                    default:
-                        return valor1 != valor2;
-                }
-            }
-
         }
+
+
         //!SECTION
         //SECTION - While
         //While -> while(Condicion) bloqueInstrucciones | instruccion
@@ -556,14 +546,106 @@ namespace Emulador
         //SECTION - DO
         /*Do -> do bloqueInstrucciones | intruccion 
         while(Condicion);*/
-        private void Do(bool execute)
+        private void Do(bool execute, int charTMP, int LineaTMP)
         {
-            int charTmp = characterCounter - 3;
-            bool executeDo;
+            //Console.WriteLine("→ [Do] Iniciando ciclo do-while");
+
+            bool ejecutaDO;
 
             do
             {
+                //Console.WriteLine("DEBUG: Iniciando ciclo do-while. Posición inicial del archivo: " + charTMP + ", línea: " + LineaTMP);
+                //Console.WriteLine("DEBUG: Ingresando al ciclo do-while. Token antes de match('do'): " + Contenido);
                 match("do");
+                //Console.WriteLine("DEBUG: 'do' reconocido. Token actual tras match: " + Contenido);
+
+                if (Contenido == "{")
+                {
+                    //Console.WriteLine("DEBUG: Se detecta inicio de bloque '{'. Ejecutando BloqueInstrucciones.");
+                    BloqueInstrucciones(execute);
+                }
+                else
+                {
+                    //Console.WriteLine("DEBUG: No se detecta bloque, ejecutando Instruccion.");
+                    Instruccion(execute);
+                }
+
+                //Console.WriteLine("DEBUG: Cuerpo del do-while ejecutado. Token actual: " + Contenido);
+                //Console.WriteLine("DEBUG: Esperando 'while'. Token actual antes de match('while'): " + Contenido);
+                match("while");
+                //Console.WriteLine("DEBUG: 'while' reconocido. Token actual: " + Contenido);
+                match("(");
+                //Console.WriteLine("DEBUG: '(' reconocido. Evaluando condición do-while.");
+
+                ejecutaDO = execute && Condicion();
+                //Console.WriteLine("DEBUG: Resultado de la condición do-while: " + ejecutaDO);
+
+                match(")");
+                //Console.WriteLine("DEBUG: ')' reconocido. Finalizando evaluación de la condición.");
+                match(";");
+                //Console.WriteLine("DEBUG: ';' reconocido. Fin de la iteración actual del do-while.");
+
+                if (ejecutaDO)
+                {
+                    //Console.WriteLine("DEBUG: Condición verdadera. Reiniciando ciclo do-while. Retornando a posición: " + charTMP + ", línea: " + LineaTMP);
+                    archivo.DiscardBufferedData();
+                    archivo.BaseStream.Seek(charTMP, SeekOrigin.Begin);
+                    archivo.BaseStream.Position = charTMP;
+                    characterCounter = charTMP;
+                    linea = LineaTMP;
+                    columna = 1;
+                    nextToken(); // ← Esto debe volver a leer "do"
+                    //Console.WriteLine("DEBUG: Ciclo reiniciado. Token actual: '" + Contenido + "', posición actual: " + characterCounter + ", línea: " + linea);
+                }
+                else
+                {
+                    //Console.WriteLine("DEBUG: Fin del ciclo do-while.");
+                }
+
+            } while (ejecutaDO);
+        }
+
+
+        //!SECTION
+        //SECTION - For
+        /*For -> for(Asignacion; Condicion; Asignacion) 
+        BloqueInstrucciones | Intruccion*/
+        private void For(bool execute)
+        {
+            //Console.WriteLine("→ [For] Iniciando ciclo for");
+
+            match("for");
+            match("(");
+
+            //Console.WriteLine("→ [For] Asignación inicial");
+            Asignacion(execute);
+            match(";");
+
+            // Guardamos posición de la condición
+            long posCondicion = archivo.BaseStream.Position;
+            int charCondicion = characterCounter;
+
+            //Console.WriteLine("→ [For] Evaluando condición inicial");
+            bool condicionValida = execute && Condicion();
+            //Console.WriteLine($"→ [For] Condición inicial: {condicionValida}");
+            match(";");
+
+            string[] tokensIncremento = CapturarIncrementoTokens();
+            match(")");
+
+            nextToken(); // Avanzamos al primer token real del cuerpo del for
+
+            long posCuerpo = archivo.BaseStream.Position;
+            int charCuerpo = characterCounter;
+
+            while (condicionValida)
+            {
+                //Console.WriteLine("→ [For] Ejecutando cuerpo del ciclo");
+
+                archivo.DiscardBufferedData();
+                archivo.BaseStream.Seek(posCuerpo, SeekOrigin.Begin);
+                characterCounter = charCuerpo;
+                nextToken();
 
                 if (Contenido == "{")
                 {
@@ -573,57 +655,44 @@ namespace Emulador
                 {
                     Instruccion(execute);
                 }
-                match("while");
-                match("(");
-                executeDo = Condicion() && execute;
-                match(")");
+
+                //Console.WriteLine("→ [For] Ejecutando incremento");
+                ProcesarIncremento(execute, tokensIncremento);
+
+                archivo.DiscardBufferedData();
+                archivo.BaseStream.Seek(posCondicion, SeekOrigin.Begin);
+                characterCounter = charCondicion;
+                nextToken();
+
+                condicionValida = execute && Condicion();
+                //Console.WriteLine($"→ [For] Reevaluando condición: {condicionValida}");
                 match(";");
+            }
 
-                if (executeDo)
-                { //NOTE - Checar esto
+            // Si nunca entró al ciclo, debemos parsear el cuerpo para mantener lectura sincronizada
+            if (!condicionValida)
+            {
+                //Console.WriteLine("→ [For] Condición falsa desde el principio. Saltando cuerpo...");
+                archivo.DiscardBufferedData();
+                archivo.BaseStream.Seek(posCuerpo, SeekOrigin.Begin);
+                characterCounter = charCuerpo;
+                nextToken();
 
-                    //seek  
-                    archivo.DiscardBufferedData();
-                    archivo.BaseStream.Seek(charTmp, SeekOrigin.Begin); //NOTE - Aprender a usar seek
-                    characterCounter = charTmp;
-                    nextToken();
-                    throw new Error("El ciclo do-while no tiene un bloque de instrucciones", log, linea, columna );
+                if (Contenido == "{")
+                {
+                    BloqueInstrucciones(false);
                 }
-            } while (executeDo);
-
-        }
-        //!SECTION
-        //SECTION - For
-        /*For -> for(Asignacion; Condicion; Asignacion) 
-        BloqueInstrucciones | Intruccion*/
-        private void For(bool execute)
-        {
-            match("for");
-            match("(");
-
-            Asignacion(execute);
-            match(";");
-
-            string etiquetaInicio = $"for_{forCounter}";
-            string etiquetaFin = $"end_for_{forCounter}";
-            forCounter++;
-            bool condicionValida = Condicion();
-            match(";");
-
-            string[] tokensIncremento = CapturarIncrementoTokens();
-            match(")");
-
-            if (Contenido == "{")
-            {
-                BloqueInstrucciones(condicionValida);
-            }
-            else
-            {
-                Instruccion(condicionValida);
+                else
+                {
+                    Instruccion(false);
+                }
             }
 
-            ProcesarIncremento(execute, tokensIncremento);
+            //Console.WriteLine("→ [For] Fin del ciclo");
         }
+
+
+
         //!SECTION
         //SECTION - Console
         private void console(bool execute)
@@ -631,6 +700,8 @@ namespace Emulador
             bool isWrite = false;
             bool isWriteLine = false;
             bool isRead = false;
+
+            //Console.WriteLine("DEBUG: Iniciando método console(). Token actual: " + Contenido);
 
             match("Console");
             match(".");
@@ -660,79 +731,46 @@ namespace Emulador
             match("(");
 
             string resultado = "";
-            bool imprimirVariable = false;
-            string nombreVariable = "";
 
             if (!isRead && Contenido != ")")
             {
-                // Caso para concatenacion 
-                if (Contenido == "\"\"")
-                {
-                    match(Tipos.Cadena); // ""
-                    if (Contenido == "+")
-                    {
-                        match("+");
-                        if (Clasificacion == Tipos.Identificador)
-                        {
-                            nombreVariable = Contenido;
-                            Variable? v = l.Find(variable => variable.Nombre == nombreVariable);
-                            if (v == null)
-                                throw new Error("La variable no existe", log, linea, columna);
+                //Console.WriteLine("DEBUG: Ingresando a análisis de argumentos. Token actual: " + Contenido + ", Clasificación: " + Clasificacion);
 
-                            match(Tipos.Identificador);
-                            imprimirVariable = true;
-                        }
-                    }
-                }
-                else if (Clasificacion == Tipos.Cadena)
+                if (Clasificacion == Tipos.Cadena)
                 {
-                    resultado = Contenido.Trim('"');
-                    match(Tipos.Cadena);
+                    // Si comienza con cadena, tratamos como texto concatenado
+                    resultado = ExpresionTexto();
                 }
-                else if (Clasificacion == Tipos.Identificador)
+                else
                 {
-                    nombreVariable = Contenido;
-                    Variable? v = l.Find(variable => variable.Nombre == nombreVariable);
-                    if (v == null)
-                        throw new Error("La variable no existe", log, linea, columna);
-
-                    match(Tipos.Identificador);
-                    imprimirVariable = true;
+                    // Si no, evaluamos como expresión numérica y convertimos a string
+                    float val = ExpresionValor();
+                    resultado = val.ToString();
                 }
-            }
-
-            if (Contenido == "+")
-            {
-                match("+");
-                resultado += Concatenaciones();
             }
 
             match(")");
             match(";");
 
+            //Console.WriteLine("DEBUG: Preparando salida. Resultado: " + resultado);
+
             if (execute)
             {
                 if (isRead)
                 {
-                    Console.ReadLine();
+                    Console.ReadLine(); // Por ahora no almacena
                 }
                 else
                 {
-                    if (imprimirVariable)
-                    {
-                        Variable? v = l.Find(variable => variable.Nombre == nombreVariable);
-                        if (v != null)
-                            Console.Write((int)v.Valor);
-                    }
-                    else
-                    {
-                        Console.Write(resultado);
-                    }
+                    Console.Write(resultado);
                     if (isWriteLine)
                         Console.WriteLine();
                 }
             }
         }
+
+
+
 
 
         //!SECTION
@@ -741,12 +779,13 @@ namespace Emulador
         private string Concatenaciones()
         {
             string resultado = "";
+            // Caso: si el token actual es un identificador, se trata de una variable.
             if (Clasificacion == Tipos.Identificador)
             {
                 Variable? v = l.Find(variable => variable.Nombre == Contenido);
                 if (v != null)
                 {
-                    resultado = v.Valor.ToString(); // Obtener el valor de la variable y convertirla
+                    resultado = v.Valor.ToString(); // Obtener el valor de la variable
                 }
                 else
                 {
@@ -754,18 +793,31 @@ namespace Emulador
                 }
                 match(Tipos.Identificador);
             }
+            // Caso: si el token es una cadena, se toma el literal.
             else if (Clasificacion == Tipos.Cadena)
             {
                 resultado = Contenido.Trim('"');
                 match(Tipos.Cadena);
             }
+            // **Nuevo caso**: Si el token es "(", se evalúa la expresión completa.
+            else if (Contenido == "(")
+            {
+                match("(");
+                float valor = ExpresionValor();  // Evalúa la expresión entre paréntesis
+                match(")");
+                resultado = valor.ToString();
+            }
+
+            // Si después hay un operador +, se acumula la siguiente parte de la concatenación.
             if (Contenido == "+")
             {
                 match("+");
-                resultado += Concatenaciones();  // Acumula el siguiente fragmento de concatenación
+                resultado += Concatenaciones();
             }
+
             return resultado;
         }
+
         //!SECTION
         //SECTION - Main
         //Main -> static void Main(string[] args) BloqueInstrucciones 
@@ -897,6 +949,8 @@ namespace Emulador
         //Factor -> numero | identificador | (Expresion)
         private void Factor()
         {
+            //Console.WriteLine($"→ [Factor] Token recibido: '{Contenido}' - Clasificación: {Clasificacion}");
+
             maximoTipo = Variable.TipoDato.Char;
 
             // Caso 1: Si es un número
@@ -1008,37 +1062,90 @@ namespace Emulador
         // Método auxiliar
         private void ProcesarIncremento(bool execute, string[] tokensIncremento)
         {
-            if (tokensIncremento.Length == 2)
+            //Console.WriteLine("→ [ProcesarIncremento] Tokens recibidos: " + string.Join(" ", tokensIncremento));
+
+            if (tokensIncremento.Length == 2 && (tokensIncremento[1] == "++" || tokensIncremento[1] == "--"))
             {
                 string varName = tokensIncremento[0];
                 string op = tokensIncremento[1];
 
+                //Console.WriteLine($"→ [ProcesarIncremento] Buscando variable '{varName}' en lista de variables");
+
                 Variable? v = l.Find(variable => variable.Nombre == varName);
                 if (v == null)
                 {
-                    throw new Error($"Sintaxis: La variable {varName} no está definida", log, linea, columna);
+                    //Console.WriteLine("→  [ProcesarIncremento] No se encontró la variable en la lista");
+                    throw new Error($"Sintaxis: la variable {varName} no está definida", log, linea, columna);
                 }
-                switch (op)
+
+                if (execute)
                 {
-                    case "++":
-                        float r = v.Valor + 1;
-                        v.setValor(r, linea, columna, log, Variable.valorTipoDato(r, maximoTipo));
-                        break;
-                    case "--":
-                        r = v.Valor - 1;
-                        v.setValor(r, linea, columna, log, Variable.valorTipoDato(r, maximoTipo));
-                        break;
-                    default:
-                        throw new Error($"Sintaxis: Incremento no reconocido: {op}", log, linea, columna);
+                    float r = v.Valor;
+                    switch (op)
+                    {
+                        case "++": r += 1; break;
+                        case "--": r -= 1; break;
+                    }
+                    //Console.WriteLine($"→ [ProcesarIncremento] Nuevo valor de '{varName}': {r}");
+                    v.setValor(r, linea, columna, log, Variable.valorTipoDato(r, maximoTipo));
                 }
             }
             else
             {
-                string expr = string.Join(" ", tokensIncremento);
-                Contenido = expr;
-                Asignacion(execute);
+                // Soporta expresiones tipo: i += 2, i = i + 2, etc.
+                //Console.WriteLine("→ [ProcesarIncremento] Incremento complejo detectado");
+
+                // Ejemplo: tokens = ["i", "+=", "2"]
+                if (tokensIncremento.Length >= 3)
+                {
+                    string varName = tokensIncremento[0];
+                    string operador = tokensIncremento[1];
+                    string valorStr = tokensIncremento[2];
+
+                    Variable? v = l.Find(variable => variable.Nombre == varName);
+                    if (v == null)
+                    {
+                        throw new Error($"Sintaxis: La variable {varName} no está definida", log, linea, columna);
+                    }
+
+                    float valor;
+
+                    if (!float.TryParse(valorStr, out valor))
+                    {
+                        Variable? v2 = l.Find(variable => variable.Nombre == valorStr);
+                        if (v2 == null)
+                        {
+                            throw new Error($"Sintaxis: Valor inválido o variable {valorStr} no definida", log, linea, columna);
+                        }
+                        valor = v2.Valor;
+                    }
+
+                    if (execute)
+                    {
+                        float resultado = v.Valor;
+
+                        switch (operador)
+                        {
+                            case "+=": resultado += valor; break;
+                            case "-=": resultado -= valor; break;
+                            case "*=": resultado *= valor; break;
+                            case "/=": resultado /= valor; break;
+                            case "%=": resultado %= valor; break;
+                            default:
+                                throw new Error($"Operador no soportado en incremento: {operador}", log, linea, columna);
+                        }
+
+                        //Console.WriteLine($"→ [ProcesarIncremento] {varName} {operador} {valor} → {resultado}");
+                        v.setValor(resultado, linea, columna, log, Variable.valorTipoDato(resultado, maximoTipo));
+                    }
+                }
+                else
+                {
+                    throw new Error("Incremento no válido en el ciclo for", log, linea, columna);
+                }
             }
         }
+
 
         private float mathFunction(float value, string name)
         {
@@ -1069,6 +1176,75 @@ namespace Emulador
                 default:
                     throw new Error($"Función matemática '{name}' no está definida", log, linea, columna);
             }
+        }
+
+        private string ExpresionTexto()
+        {
+            string resultado = "";
+
+            // Si comienza con una cadena, identificador o número
+            if (Clasificacion == Tipos.Cadena)
+            {
+                resultado += Contenido.Trim('"');
+                match(Tipos.Cadena);
+            }
+            else if (Clasificacion == Tipos.Identificador)
+            {
+                Variable? v = l.Find(variable => variable.Nombre == Contenido);
+                if (v == null)
+                    throw new Error("La variable no existe", log, linea, columna);
+                resultado += v.Valor.ToString();
+                match(Tipos.Identificador);
+            }
+            else if (Clasificacion == Tipos.Numero)
+            {
+                resultado += Contenido;
+                match(Tipos.Numero);
+            }
+            else
+            {
+                float val = ExpresionValor();
+                resultado += val.ToString();
+            }
+
+            // Soportar concatenaciones con +
+            while (Contenido == "+")
+            {
+                match("+");
+                if (Clasificacion == Tipos.Cadena)
+                {
+                    resultado += Contenido.Trim('"');
+                    match(Tipos.Cadena);
+                }
+                else if (Clasificacion == Tipos.Identificador)
+                {
+                    Variable? v = l.Find(variable => variable.Nombre == Contenido);
+                    if (v == null)
+                        throw new Error("La variable no existe", log, linea, columna);
+                    resultado += v.Valor.ToString();
+                    match(Tipos.Identificador);
+                }
+                else if (Clasificacion == Tipos.Numero)
+                {
+                    resultado += Contenido;
+                    match(Tipos.Numero);
+                }
+                else
+                {
+                    float val = ExpresionValor();
+                    resultado += val.ToString();
+                }
+            }
+
+            return resultado;
+        }
+
+        private float ExpresionValor()
+        {
+            Termino();
+            MasTermino();
+            // El resultado final de la expresión debe quedar en la cima de la pila
+            return s.Pop();
         }
 
         /*SNT = Producciones = Invocar el metodo

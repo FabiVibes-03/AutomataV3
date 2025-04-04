@@ -19,7 +19,7 @@ namespace Emulador
         public StreamWriter error = new StreamWriter("Error.log"); //Archivo de salida
         DateTime ahora = DateTime.Now; //Fecha y hora
         public StreamWriter asm; //Archivo de salida
-        public int linea = 1; //Número de línea
+        public static int linea = 1; //Número de línea
         const int F = -1; //Estado de aceptación final
         const int E = -2; //Estado de error
         public int columna = 1; //Número de columna
@@ -71,7 +71,6 @@ namespace Emulador
             string nombreArchivoWithoutExt = Path.GetFileNameWithoutExtension(nombreArchivo);   /* Obtenemos el nombre del archivo sin la extensión para poder crear el .log y .asm */
             error.AutoFlush = true;
             characterCounter = 0;
-
             if (File.Exists(nombreArchivo))
             {
                 if (Path.GetExtension(nombreArchivo) != ".cpp")
@@ -177,14 +176,57 @@ namespace Emulador
             char c;
             string buffer = "";
             int estado = 0;
+
+            //Console.WriteLine($"DEBUG (Class:Token) >>> Iniciando nextToken - Línea: {linea}, Columna: {columna}");
+
             while (estado >= 0)
             {
+                if (finArchivo()) break;
+
                 c = (char)archivo.Peek();
-                estado = TRAND[estado, Columna(c)];
+
+                // 🟡 Manejamos cadena manualmente
+                if (c == '"' && estado == 0)
+                {
+                    buffer += c;
+                    archivo.Read(); characterCounter++; columna++;
+
+                    while (!archivo.EndOfStream)
+                    {
+                        char siguiente = (char)archivo.Read();
+                        characterCounter++;
+                        columna++;
+
+                        buffer += siguiente;
+
+                        if (siguiente == '"') break;
+
+                        if (siguiente == '\n')
+                        {
+                            linea++;
+                            columna = 1;
+                        }
+                    }
+
+                    Contenido = buffer;
+                    Clasificacion = Tipos.Cadena;
+                    //Console.WriteLine($"DEBUG (Class:Token) Token generado → Contenido: '{Contenido}', Clasificación: {Clasificacion}, Línea: {linea}, Columna: {columna}");
+                    return;
+                }
+
+                int col = Columna(c);
+                int nuevoEstado = TRAND[estado, col];
+
+                //Console.WriteLine($"DEBUG (Class:Token) Estado: {estado} -> {nuevoEstado} | Carácter: '{c}' | Columna TRAND: {col}");
+
+                estado = nuevoEstado;
                 Clasifica(estado);
+
                 if (estado >= 0)
                 {
                     archivo.Read();
+                    characterCounter++;
+
                     if (c == '\n')
                     {
                         linea++;
@@ -194,6 +236,7 @@ namespace Emulador
                     {
                         columna++;
                     }
+
                     if (estado > 0)
                     {
                         buffer += c;
@@ -204,26 +247,22 @@ namespace Emulador
                     }
                 }
             }
+
             if (estado == E)
             {
-                if (Clasificacion == Tipos.Cadena)
+                //Console.WriteLine($"DEBUG (Class:Token) ERROR estado léxico con buffer: '{buffer}'");
+                string msg = Clasificacion switch
                 {
-                    throw new Error("léxico, se esperaba un cierre de cadena", log, linea, columna);
-                }
-                else if (Clasificacion == Tipos.Caracter)
-                {
-                    throw new Error("léxico, se esperaba un cierre de comilla simple", log, linea, columna);
-                }
-                else if (Clasificacion == Tipos.Numero)
-                {
-                    throw new Error("léxico, se esperaba un dígito", log, linea, columna);
-                }
-                else
-                {
-                    throw new Error("léxico, se espera fin de comentario", log, linea, columna);
-                }
+                    Tipos.Cadena => "léxico, se esperaba un cierre de cadena",
+                    Tipos.Caracter => "léxico, se esperaba un cierre de comilla simple",
+                    Tipos.Numero => "léxico, se esperaba un dígito",
+                    _ => "léxico, se espera fin de comentario"
+                };
+                throw new Error(msg, log, linea, columna);
             }
+
             Contenido = buffer;
+
             if (!finArchivo())
             {
                 if (Clasificacion == Tipos.Identificador)
@@ -233,15 +272,13 @@ namespace Emulador
                         case "char":
                         case "int":
                         case "float":
-                            Clasificacion = Tipos.TipoDato;
-                            break;
+                            Clasificacion = Tipos.TipoDato; break;
                         case "if":
                         case "else":
                         case "do":
                         case "while":
                         case "for":
-                            Clasificacion = Tipos.PalabraReservada;
-                            break;
+                            Clasificacion = Tipos.PalabraReservada; break;
                         case "abs":
                         case "ceil":
                         case "pow":
@@ -253,13 +290,15 @@ namespace Emulador
                         case "rand":
                         case "trunc":
                         case "round":
-                            Clasificacion = Tipos.FuncionMatematica;
-                            break;
+                            Clasificacion = Tipos.FuncionMatematica; break;
                     }
                 }
-                //log.WriteLine(Contenido + " = " + Clasificacion);
             }
+
+            //Console.WriteLine($"DEBUG (Class:Token) Token generado → Contenido: '{Contenido}', Clasificación: {Clasificacion}, Línea: {linea}, Columna: {columna}");
         }
+
+
         public bool finArchivo()
         {
             return archivo.EndOfStream;
